@@ -13,7 +13,7 @@
 #include "CONTROLINFO.h"
 
 /* Allusion to internal functions */
-static void computeValue(double*, double*, CONTROLINFO*);
+static void computeValue(double *x, double *y, CONTROLINFO *ci);
 static void savePartialResults(CONTROLINFO*);
 static void printResults(unsigned int, char**);
 
@@ -173,7 +173,7 @@ int main (int argc, char *argv[]){
             MPI_Recv (&ci, sizeof (CONTROLINFO), MPI_BYTE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             MPI_Recv (x, size_signal, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             MPI_Recv (y, size_signal, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            circularCrossCorrelation(x, y, &ci);
+            computeValue(x, y, &ci);
             MPI_Send (&ci, sizeof (CONTROLINFO), MPI_BYTE, 0, 0, MPI_COMM_WORLD);
         }
     }

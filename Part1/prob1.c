@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <math.h>
+#include <ctype.h>
 #include <string.h>
 
 #include "probConst.h"
@@ -25,8 +26,22 @@ int *maxWordLEN;
 /* Allusion to internal functions */
 static void savePartialResults(CONTROLINFO*);
 static int isValidStopCharacter(char);
-static void printResults(unsigned int, char**);
+static void printResults(unsigned int numFiles, char *filesToProcess[]);
 static void processText(unsigned char*, CONTROLINFO*);
+void printWordLength(int largestWord);
+void printRelativeCountConsoant(int largestWord, int wordCount, int arrayLength[MAX_SIZE_WORD], int arrayConsoantCount[MAX_SIZE_WORD][MAX_SIZE_WORD]);
+void printRelativeLength(int largestWord, int wordCount, int arrayLenght[MAX_SIZE_WORD]);
+void printWordBySize(int largestWord, int arrayLenght[MAX_SIZE_WORD]);
+int isNumeric(char character);
+int isAlphaNumeric(char character);
+int isVowel(char character);
+int isPonctuationSymbol(unsigned char ch);
+int isSeparationSymbol(unsigned char ch);
+int isUnderscore(unsigned char ch);
+int isApostrophe(unsigned char ch);
+int isSpace(unsigned char ch);
+char removeAccented(unsigned char ch);
+int maxWord(int size1, int size2);
 
 /**
  *  \brief Main function.
@@ -103,7 +118,7 @@ int main (int argc, char *argv[]){
           ci.numBytes = 0;
           ci.wordCount = 0;
           ci.largestWord = 0;
-          ci.nCharactersWord = 0;
+          ci.nCharacters = 0;
           ci.nConsoants = 0;
         }
 
@@ -160,7 +175,7 @@ int main (int argc, char *argv[]){
 
     unsigned int whatToDo;                /* command */
     CONTROLINFO ci;                       /* data transfer variable */
-    unsigned char char[K+1]; /* text to process */
+    unsigned char dataToBeProcessed[K+1] = {0}; /* text to process */
 
     while (true){
       MPI_Recv (&whatToDo, 1, MPI_UNSIGNED, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -199,16 +214,23 @@ void savePartialResults(CONTROLINFO *ci){
   size_t filePosition = ci->filePosition;
   results[filePosition].numBytes += ci->numBytes;
   results[filePosition].wordCount += ci->wordCount;
-  results[filePosition].nCharactersWord += ci->nCharactersWord;
+  results[filePosition].nCharacters += ci->nCharacters;
   results[filePosition].nConsoants += ci->nConsoants;
   ci->wordCount = 0;
+  ci->nCharacters = 0;
+  ci->nConsoants = 0;
   if (ci->largestWord > results[filePosition].largestWord) {
     results[filePosition].largestWord = ci->largestWord;
     maxWordLEN[filePosition] = ci->largestWord;
   }
 
   for (size_t i = 0; i < ci->largestWord+1; i++){
-    for (size_t j = 0; j < ci->largestWord; j++){
+    results[filePosition].nWordsBySize[i] += ci->nWordsBySize[i];
+    ci->nWordsBySize[i] = 0;
+  }
+
+  for (size_t i = 0; i < ci->largestWord+1; i++){
+    for (size_t j = 0; j < ci->largestWord+1; j++){
       results[filePosition].nConsoantsByWordLength[i][j] += ci->nConsoantsByWordLength[i][j];
       ci->nConsoantsByWordLength[i][j] = 0;
     }
@@ -249,11 +271,11 @@ static void printResults(unsigned int numFiles, char *filesToProcess[]){
 
 for (int i = 0; i < numFiles; i++) {
     printf("\nFile name: %s\n", filesToProcess[i]);
-    printf("Total number of words = %d\nWord Length\n", fileInfo[i]->wordCount);
-    printWordLength(results[i]->largestWord);
-    printWordBySize(results[i]->largestWord, results[i]->nWordsBySize);
-    printRelativeLength(results[i]->largestWord, results[i]->wordCount, results[i]->nWordsBySize);
-    printRelativeCountConsoant(results[i]->largestWord, results[i]->wordCount, results[i]->nWordsBySize, results[i]->nConsoantsByWordLength);
+    printf("Total number of words = %d\nWord Length\n", results[i].wordCount);
+    printWordLength(results[i].largestWord);
+    printWordBySize(results[i].largestWord, results[i].nWordsBySize);
+    printRelativeLength(results[i].largestWord, results[i].wordCount, results[i].nWordsBySize);
+    printRelativeCountConsoant(results[i].largestWord, results[i].wordCount, results[i].nWordsBySize, results[i].nConsoantsByWordLength);
 }
   free(results);
   free(maxWordLEN);
@@ -267,10 +289,10 @@ for (int i = 0; i < numFiles; i++) {
  *  \param dataToBeProcessed chunk of text data being processed
  *  \param ci structure where calculated statistics are saved
  */
-static void processText(unsigned char *dataToBeProcessed, CONTROLINFO * partialInfo) {
+static void processText(unsigned char *buffer, CONTROLINFO * partialInfo) {
     char ch;
     int inWord = 0;
-    int nConsoantsWord = 0, nCharactersWord = 0, largestWord = 0, length = partialInfo->numBytes;
+    int nConsoantsWord = 0, nCharacters = 0, length = partialInfo->numBytes;
     
     for (int i = 0; i < length; i++) {
         if ((unsigned char)buffer[i] == 0xc3) { //Second bit more significant
@@ -314,12 +336,12 @@ static void processText(unsigned char *dataToBeProcessed, CONTROLINFO * partialI
         ch = tolower(ch);
         if ((isPonctuationSymbol(ch) || isSpace(ch) || isSeparationSymbol(ch)) && inWord) { //Check if is delimiter
             inWord = 0;
-            partialInfo->largestWord = maxWord(partialInfo->largestWord, nCharactersWord);
-            partialInfo->nCharacters += nCharactersWord;
+            partialInfo->largestWord = maxWord(partialInfo->largestWord, nCharacters);
+            partialInfo->nCharacters += nCharacters;
             partialInfo->nConsoants += nConsoantsWord;
-            partialInfo->nWordsBySize[nCharactersWord]++;
-            partialInfo->nConsoantsByWordLength[nConsoantsWord][nCharactersWord]++;
-            nCharactersWord = 0;
+            partialInfo->nWordsBySize[nCharacters]++;
+            partialInfo->nConsoantsByWordLength[nConsoantsWord][nCharacters]++;
+            nCharacters = 0;
             nConsoantsWord = 0;
         }
         else if (((isAlphaNumeric(ch) || isUnderscore(ch))) && !inWord) //Check if is start of word
@@ -333,7 +355,7 @@ static void processText(unsigned char *dataToBeProcessed, CONTROLINFO * partialI
             {
                 nConsoantsWord++;
             }
-            nCharactersWord++;
+            nCharacters++;
         }
 
         if (buffer[i] == '\0') {
@@ -529,7 +551,7 @@ int isNumeric(char character) {
     return 0;
 }
 
-void printWordLength(size_t largestWord) {
+void printWordLength(int largestWord) {
     int i;
     for (i = 1; i <= largestWord; i++)
     {
@@ -539,7 +561,7 @@ void printWordLength(size_t largestWord) {
     printf("\n");
 }
 
-void printWordBySize(size_t largestWord, size_t arrayLenght) {
+void printWordBySize(int largestWord, int arrayLenght[MAX_SIZE_WORD]) {
     for (int i = 1; i <= largestWord; i++)
     {
         printf("\t");
@@ -548,7 +570,7 @@ void printWordBySize(size_t largestWord, size_t arrayLenght) {
     printf("\n");
 }
 
-void printRelativeLength(size_t largestWord, size_t wordCount, size_t arrayLenght) {
+void printRelativeLength(int largestWord, int wordCount, int arrayLenght[MAX_SIZE_WORD]) {
     for (int i = 1; i <= largestWord; i++)
     {
         printf("\t");
@@ -557,7 +579,7 @@ void printRelativeLength(size_t largestWord, size_t wordCount, size_t arrayLengh
     printf("\n");
 }
 
-void printRelativeCountConsoant(size_t largestWord, size_t wordCount, size_t arrayLength, int arrayConsoantCount[MAX_SIZE_WORD][MAX_SIZE_WORD]) {
+void printRelativeCountConsoant(int largestWord, int wordCount, int arrayLength[MAX_SIZE_WORD], int arrayConsoantCount[MAX_SIZE_WORD][MAX_SIZE_WORD]) {
     int value;
     for (int lign = 0; lign <= largestWord; lign++) {
         printf("%d", lign);
