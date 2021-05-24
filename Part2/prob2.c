@@ -78,7 +78,6 @@ int main (int argc, char *argv[]){
 
         /* processing the circular cross correlation between two signals */
         while (filePos <= numFiles) {
-            
             /* read file, i.e. both signals and result */
             if((f = fopen (argv[filePos], "rb")) == NULL){
                 perror ("error on file opening for reading");
@@ -91,11 +90,40 @@ int main (int argc, char *argv[]){
 
             fread(&samples, sizeof(int), 1, f);
             if (filePos == 1) {
-                x = (double *) malloc(sizeof(double) * samples);
-                y = (double *) malloc(sizeof(double) * samples);
+                if((x = (double *) malloc(sizeof(double) * samples)) == NULL){
+                	perror ("Error on allocating memory!");
+                	whatToDo = NOMOREWORK;
+                	for (int i = 1; i < nProc; i++)
+                    	MPI_Send (&whatToDo, 1, MPI_UNSIGNED, i, 0, MPI_COMM_WORLD);
+                	MPI_Finalize ();
+                	exit (EXIT_FAILURE);
+                }
+                if((y = (double *) malloc(sizeof(double) * samples)) == NULL){
+                	perror ("Error on allocating memory!");
+                	whatToDo = NOMOREWORK;
+                	free(x);
+                	for (int i = 1; i < nProc; i++)
+                    	MPI_Send (&whatToDo, 1, MPI_UNSIGNED, i, 0, MPI_COMM_WORLD);
+                	MPI_Finalize ();
+                	exit (EXIT_FAILURE);
+                }
             } else {
-                x = (double *) realloc(x, sizeof(double) * samples);
-                y = (double *) realloc(y, sizeof(double) * samples);
+                if((x = (double *) realloc(x, sizeof(double) * samples)) == NULL){
+                	perror ("Error on allocating memory!");
+                	whatToDo = NOMOREWORK;
+                	for (int i = 1; i < nProc; i++)
+                    	MPI_Send (&whatToDo, 1, MPI_UNSIGNED, i, 0, MPI_COMM_WORLD);
+                	MPI_Finalize ();
+                	exit (EXIT_FAILURE);
+                }
+                if((y = (double *) realloc(y, sizeof(double) * samples)) == NULL){
+                	perror ("Error on allocating memory!");
+                	whatToDo = NOMOREWORK;
+                	for (int i = 1; i < nProc; i++)
+                    	MPI_Send (&whatToDo, 1, MPI_UNSIGNED, i, 0, MPI_COMM_WORLD);
+                	MPI_Finalize ();
+                	exit (EXIT_FAILURE);
+                }
             }
             ci.numSamples = samples;
             ci.filePosition = filePos - 1;
@@ -125,7 +153,6 @@ int main (int argc, char *argv[]){
             /* loop until all positions of result array (circular cross correlation) have been calculated */
             while (aux < samples){ 
                 workProc = 1;
-                
                 /* distribute sorting task */
                 for (int i = 1; i < nProc && aux < samples; i++, workProc++, aux++){
                     whatToDo = WORKTODO;

@@ -79,13 +79,30 @@ int main (int argc, char *argv[]){
     CONTROLINFO ci = {0};                  /* data transfer variable */
     unsigned char dataToBeProcessed[K+1] = {0}; /* text to process */
     size_t filePos = 1;                         /* current file being processed*/
-    results = (CONTROLINFO*) calloc(numFiles, sizeof(CONTROLINFO));
-    maxWordLEN = (int *) calloc(numFiles, sizeof(int));
+    if((results = (CONTROLINFO*) calloc(numFiles, sizeof(CONTROLINFO))) == NULL){
+    	perror ("Error on allocating memory");
+    	whatToDo = NOMOREWORK;
+      	for (x = 1; x < totProc; x++)
+        	MPI_Send (&whatToDo, 1, MPI_UNSIGNED, x, 0, MPI_COMM_WORLD);
+      	MPI_Finalize ();
+      	return EXIT_FAILURE;
+    }
+    if((maxWordLEN = (int *) calloc(numFiles, sizeof(int))) == NULL){
+    	perror ("Error on allocating memory");
+    	free(results);
+    	whatToDo = NOMOREWORK;
+      	for (x = 1; x < totProc; x++)
+        	MPI_Send (&whatToDo, 1, MPI_UNSIGNED, x, 0, MPI_COMM_WORLD);
+      	MPI_Finalize ();
+      	return EXIT_FAILURE;
+    }
 
     /* check running parameters and load list of names into memory */
 
     if (argc < 2){ 
       perror("Please insert text files to be processed as arguments!");
+      free(results);
+      free(maxWordLEN);
       whatToDo = NOMOREWORK;
       for (x = 1; x < totProc; x++)
         MPI_Send (&whatToDo, 1, MPI_UNSIGNED, x, 0, MPI_COMM_WORLD);
@@ -107,7 +124,9 @@ int main (int argc, char *argv[]){
         /* open file if necessary */
         if(f == NULL) {
           if((f = fopen (argv[filePos], "rb")) == NULL){
-            perror ("error on file opening for reading");
+            perror ("Error on file opening for reading");
+            free(results);
+		    free(maxWordLEN);
             whatToDo = NOMOREWORK;
             for (x = 1; x < totProc; x++)
               MPI_Send (&whatToDo, 1, MPI_UNSIGNED, x, 0, MPI_COMM_WORLD);
@@ -126,7 +145,9 @@ int main (int argc, char *argv[]){
         if(i < K) {
           /* close file */
           if (fclose (f) == EOF){
-            perror ("error on closing file");
+            perror ("Error on closing file");
+            free(results);
+	        free(maxWordLEN);
             whatToDo = NOMOREWORK;
             for (x = 1; x < totProc; x++)
               MPI_Send (&whatToDo, 1, MPI_UNSIGNED, x, 0, MPI_COMM_WORLD);
@@ -144,7 +165,16 @@ int main (int argc, char *argv[]){
           }
           if(i == 0)
             i = aux;
-          fseek(f, i-K, 1);
+          if(fseek(f, i-K, 1) != 0){
+          	perror ("Error on fseek!");
+          	free(results);
+	  	     free(maxWordLEN);
+            whatToDo = NOMOREWORK;
+            for (x = 1; x < totProc; x++)
+              MPI_Send (&whatToDo, 1, MPI_UNSIGNED, x, 0, MPI_COMM_WORLD);
+            MPI_Finalize ();
+            exit (EXIT_FAILURE);
+          }
         }
         ci.numBytes = i;
      
@@ -165,7 +195,6 @@ int main (int argc, char *argv[]){
     }
     
     /* dismiss worker processes */
-    
     whatToDo = NOMOREWORK;
     for (x = 1; x < totProc; x++)
       MPI_Send (&whatToDo, 1, MPI_UNSIGNED, x, 0, MPI_COMM_WORLD);
